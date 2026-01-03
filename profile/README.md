@@ -91,10 +91,38 @@ Oh yea it's also configured with environment variables that are meant to be cont
 ### [streamerd](https://github.com/Stellar-Suite/Hyperwarp/tree/master/streamerd)
 Hyperwarp's repository has more than one crate. Hyperwarp by itself can't stream it's framebuffer by design, the most it can do is provide a unix socket or similar to control the process as well as the capture mode which provides the current framebuffer as a raw image in `/dev/shm` (this will def change with future capture methods). There is a seperate binary crate called `streamerd` (streamer daemon) that connects to that unix socket and feeds the frames into Gstreamer (which has proven to work before based off a [poc of abusing it to play minecraft remotely](https://github.com/javaarchive/MineWarp) ), but currently it only goes to the `autovideosink` element for testing. They share a crate called `stellar_protocol` to share protocol definitions and standardized serialzie/deserialize functions. streamerd is designed so in the future it should be modular enough to accept inputs from sources other than the Hyperwarp shared library to be streamed.
 
-At this point in time, all 4 projects work together to make games that use SDL like Celeste playable over the local network but more work is being done to stabilize streamerd for multiuser use.
+At this point in time, all 4 projects work together to make games that use SDL like Celeste playable over the local network. Multiple clients can connect to `streamerd` in it's present state however obviously user inputs can conflict.
 
 # original archecticture diagram
-![image](https://github.com/user-attachments/assets/056d0f9a-525b-42a0-b475-5a39884d9e65)
+[original diagram image](https://github.com/user-attachments/assets/056d0f9a-525b-42a0-b475-5a39884d9e65)
+```mermaid
+graph TB
+    subgraph Game["Game"]
+        RustLD["Rust LD Preload<br/>Does bulk of work, pulls in crates<br/>out of laziness"]
+        CPreload["C Preload<br/>For doing stuff Rust can't or<br/>is very difficult to do"]
+    end
+    
+    RustStreamer["Rust Streamer<br/>Using gstreamer bindings"]
+    GstreamerPipeline["Gstreamer Pipeline"]
+    Stargate["Stargate<br/>(Backend Game/App Manager)"]
+    WebFrontend["Web Frontend"]
+    
+    RustLD <--> CPreload
+    RustLD <-->|"Pluggable transport:<br/>Unix Socket, TCP socket, ..."| RustStreamer
+    RustLD -->|"Shared Memory file<br/>for frames"| RustStreamer
+    RustStreamer --> GstreamerPipeline
+    
+    Stargate -->|"User inputs"| RustStreamer
+    Stargate <-->|"WebSocket: stats and tuning<br/>of parameters and WebRTC<br/>negotiation"| GstreamerPipeline
+    GstreamerPipeline -->|"WebRTC<br/>Video and Audio"| WebFrontend
+    Stargate <-->|"WebSocket: User Input,<br/>WebRTC negotiation"| WebFrontend
+    
+    Note1["Not pictured: Stargate creates<br/>pulseaudio/pipewire null outputs<br/>for streamerd to record from"]
+    
+    style Game fill:#c5d9f1
+    style GstreamerPipeline fill:#d4e8d4
+    style Note1 fill:#fff,stroke:#fff
+```
 For the web frontend I've decided to call Astral.
 
 
